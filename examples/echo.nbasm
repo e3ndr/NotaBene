@@ -1,0 +1,39 @@
+/* Set speed to 75ms/tick */
+$set #l [75]
+$int [4]
+
+$set #a [13] /* Set register a to the scancode for ENTER */
+$set #b [96] /* Set register b to the scancode for ESC */
+
+$int [2] "Type in characters and then hit enter for a read back. Press ESC to close.\n"
+
+$jnr (read) /* Skip straight to read. */
+
+flush:
+	$pur
+	
+	$set #l [10]
+	$int [1]
+	$int [13] /* Beep */
+	
+	$rer /* Restore the stack to where it was when we started */
+	$ret
+
+quit:
+	$jmp (flush)
+	$int [13] /* Beep */
+	$hlt
+
+read:
+	$int [8] /* Read from input */
+	
+	/* Flush and go back to the top of the loop */
+	$jeq #l #a (flush)
+	$jeq #l #a (read)
+	
+	$jeq #l #b (quit)
+	
+	$int [1] /* Print to display buffer */
+	
+	/* Loop */
+	$jnr (read)

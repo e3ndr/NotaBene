@@ -1,0 +1,470 @@
+$set #a 12
+$mst #a (time_hour)
+
+/* Set the normal tick speed to 10ms/t */
+$set #a 10000000
+$mst #a (normal_tick_speed)
+
+/* Speed up for init */
+$set #l 0
+$int 4
+
+/* Switch to ansi mode */
+$set #l 1
+$int 0x11
+
+/* Set the preferred width and height of the console */
+$set #l 30
+$int 0x0f
+
+$set #l 15
+$int 0x10
+
+/* Start ticking */
+$jnr (tick_time)
+	
+reset_cursor:
+	$pur
+	
+	/* Reset cursor pos */
+	$int 2 27 "[0;0H"
+	
+	$set #a 1
+	$mst #a (curr_x)
+	$mst #a (curr_y)
+	
+	$rer
+	$ret
+
+move_cursor:
+	$pur
+	
+	/* Load the current values */
+	$mld #a (curr_x)
+	$mld #b (curr_y)
+	
+	/* Add the passed values */
+	$add #a #m
+	$add #b #n
+	
+	/* Save the new values to memory */
+	$mst #a (curr_x)
+	$mst #b (curr_y)
+	
+	/* 
+	$mld #l (curr_x)
+	$int 0
+	$mld #l (curr_y)
+	$int 0
+	*/
+	 
+	/* Move the cursor (ESC[{y};{x}H) */
+	$int 2 27 "["
+	$mld #l (curr_y)
+	$int 0
+	$int 2 ";"
+	$mld #l (curr_x)
+	$int 0
+	$int 2 "H"
+	
+	$rer
+	$ret
+	
+tick_time:
+	$jmp (reset_cursor)
+	
+	$mld #a (time_hour)
+	$mld #b (time_minute)
+	
+	/* Put the current time in seconds into the #i register */
+	$int 5
+	/* Load the last known time */
+	$mld #c (time_in_seconds)
+	
+	/* Subtract the last known time from the current time */
+	$sub #l #c
+	
+	/* if (#l == 0) return; */
+	$set #h 0
+	$jeq #l #h (tick_time_return)
+	/* Otherwise we start incrementing */
+	
+	/* Save the current time */
+	$int 5
+	$mst #l (time_in_seconds)
+	
+	/* Increment minute and potentially hour. */
+	$inc #b
+
+	$set #h 61
+	$jne #b #h (tick_time_update)
+	$jne #b #h (tick_time_return)
+	
+	/* Wrap minute */
+	$set #b 0
+	
+	$jmp (tick_time_update)
+	
+	/* Increment hour and potentially wrap */
+	$mld #a (time_hour)
+	
+	$inc #a
+	
+	$set #h 13
+	$jne #a #h (tick_time_update)
+	$jne #a #h (tick_time_return)
+	
+	/* Wrap hour */
+	$set #a 1
+	
+	$jmp (tick_time_update)
+	
+	tick_time_update:
+		$mst #a (time_hour)
+		$mst #b (time_minute)
+		
+		$jmp (render)
+		
+		$ret
+	
+	tick_time_return:
+	 	/* Pop the jump off the stack */
+		$pop
+		$jnr (tick_time)
+	
+render:
+	$pur
+	
+	/* Increase the speed */
+	$set #l 0
+	$int 4
+	
+	$mld #a (time_hour)
+	$mld #i (time_minute)
+	$cpr #e #i /* Left digit */
+	$cpr #f #i /* Right digit */
+	
+	/* Take the left digit of the minute and shift it right */
+	$set #h 10
+	$div #e #h
+	
+	/* Take the left digit of the minute and subtract it from the right digit */
+	$cpr #g #e
+	$mul #g #h
+	$sub #f #g
+	
+	/* Clear for render */
+	$jmp (print_watch)
+	$jmp (reset_watch_screen)
+	
+	/* Print the leading '1' for hours > 9 and remove it */
+	$set #c 9
+	$jgt #a #c (render_add_additional_hour)
+	
+	/* Print the right minute */
+	$cpr #b #f
+	
+	$jmp (reset_cursor)
+	$set #m 18
+	$set #n 4
+	$jmp (move_cursor)
+	$jmp (render_number)
+	
+	/* Print the left minute */
+	$cpr #b #e
+	
+	$jmp (reset_cursor)
+	$set #m 15
+	$set #n 4
+	$jmp (move_cursor)
+	$jmp (render_number)
+	
+	/* Print the hour */
+	$cpr #b #a
+	
+	$jmp (reset_cursor)
+	$set #m 9
+	$set #n 4
+	$jmp (move_cursor)
+	$jmp (render_number)
+	
+	/* Reset the speed */
+	$mld #l (normal_tick_speed)
+	$int 4
+	
+	$rer
+	$ret
+	
+	render_add_additional_hour:
+		$set #h 10
+		$jmp (print_watch_additional_hour)
+		$sub #a #h
+		$ret
+
+	render_number:
+		$set #c 0
+		$jeq #b #c (print_watch_0)
+		$inc #c
+		$jeq #b #c (print_watch_1)
+		$inc #c
+		$jeq #b #c (print_watch_2)
+		$inc #c
+		$jeq #b #c (print_watch_3)
+		$inc #c
+		$jeq #b #c (print_watch_4)
+		$inc #c
+		$jeq #b #c (print_watch_5)
+		$inc #c
+		$jeq #b #c (print_watch_6)
+		$inc #c
+		$jeq #b #c (print_watch_7)
+		$inc #c
+		$jeq #b #c (print_watch_8)
+		$inc #c
+		$jeq #b #c (print_watch_9)
+		$ret
+		
+		
+print_watch:
+	$int 2 27 "[J" /* Clear screen */
+	$int 2 "        |           |        \n"
+	$int 2 "       _|___________|_       \n"
+	$int 2 "     _/_______________\_     \n"
+	$int 2 "    /  _______________  \    \n"
+	$int 2 "   |  |               |  |   \n"
+	$int 2 "   |  |               |  |\  \n"
+	$int 2 "   |  |               |  | | \n"
+	$int 2 "   |  |_______________|  |/  \n"
+	$int 2 "   |                 __  |   \n"
+	$int 2 "   |  _   _   _     |  | |\  \n"
+	$int 2 "   | |_| |_| |_|    |__| |/  \n"
+	$int 2 "   \_____________________/   \n"
+	$int 2 "      \_______________/      \n"
+	$int 2 "        |           |        \n"
+	$int 2 "        |           |        "
+	$ret
+
+reset_watch_screen:
+	/* move the cursor to the face */
+	$jmp (reset_cursor)
+	$set #m 7
+	$set #n 4
+	$jmp (move_cursor)
+	
+	$int 2 "              "
+	
+	$jmp (reset_cursor)
+	$set #m 7
+	$set #n 5
+	$jmp (move_cursor)
+	
+	$int 2 "      o       "
+	
+	$jmp (reset_cursor)
+	$set #m 7
+	$set #n 6
+	$jmp (move_cursor)
+	
+	$int 2 "      o       "
+	
+	$ret
+
+print_watch_additional_hour:
+	$jmp (reset_cursor)
+	$set #m 7
+	$set #n 5
+	$jmp (move_cursor)
+	
+	$int 2 "|"
+	
+	$jmp (reset_cursor)
+	$set #m 7
+	$set #n 6
+	$jmp (move_cursor)
+	
+	$int 2 "|"
+	
+	$ret
+
+print_watch_0:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "| |"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_|"
+	
+	$ret
+
+print_watch_1:
+	$int 2 "   "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 " | "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 " | "
+	
+	$ret
+
+print_watch_2:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 " _|"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_ "
+	
+	$ret
+
+print_watch_3:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 " _|"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 " _|"
+	
+	$ret
+
+print_watch_4:
+	$int 2 "   "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_|"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "  |"
+	
+	$ret
+
+print_watch_5:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 " _|"
+	
+	$ret
+
+print_watch_6:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_|"
+	
+	$ret
+
+print_watch_7:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "  |"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "  |"
+	
+	$ret
+
+print_watch_8:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_|"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_|"
+	
+	$ret
+
+print_watch_9:
+	$int 2 " _ "
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "|_|"
+	
+	$set #m 0
+	$set #n 1
+	$jmp (move_cursor)
+	
+	$int 2 "  |"
+	
+	$ret
+	
+	
+
+$hlt
+
+/* variables */
+curr_x:
+curr_y:
+time_hour:
+time_minute:
+time_in_seconds:
+normal_tick_speed:
+	

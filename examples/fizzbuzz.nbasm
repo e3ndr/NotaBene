@@ -1,0 +1,128 @@
+/* Set the tick speed to 0ms/t */
+$set #l 0 ; $int 4
+
+
+$set #a 0    /* Current number                    */
+$set #b 0    /* Word structure pointer            */
+/* #c:          Word structure value (at pointer) */
+$set #d null /* Shared                            */
+$set #e 3 	 /* write_buffer offset               */
+$set #f 0    /* Work register for find            */
+$set #g -1   /* End of struct marker              */
+$set #h 500  /* Amount of iterations              */
+
+
+$int 2 "Ready, Press any key to start.\n"
+$int 8 /* discard */
+
+
+find:
+	$jeq #a #h (exit)
+	
+	$inc #a
+	$set #b 0 /* Reset words structure offset */
+
+	find__loop:
+		$cpr #f #a /* Clone the current number */
+		
+		$inc #b
+		
+		$ald #c (words) #b
+		
+		$jeq #c #g (find__loop_eos_break)
+		
+		/* Do a modulus of the number, if it's 0 then 
+		   we print the associated text and cleanup. */
+		$mod #f #c
+		$jeq #f #d (fill_buffer_and_print)
+		$jeq #f #d (find__loop_break)
+		
+		find__loop_bleed:
+			$inc #b
+			$ald #c (words) #b
+			
+			/* need to increment #b until the struct points at a null */
+			$jeq #c #d (find__loop_bleed_break)
+			
+			$jnr (find__loop_bleed)
+			
+			find__loop_bleed_break:
+				$pop /* Pop the $jeq return stack off, so we will return to the root caller */
+				$jnr (find__loop)
+
+
+		find__loop_eos_break:
+			$cpr #l #a ; $int 0 ; $int 2 "\n"
+
+		find__loop_break:
+			$jnr (find)
+
+fill_buffer_and_print:
+	$set #e 3 /* Reset write buffer offset */
+	
+	fill_buffer_and_print__loop:
+		$inc #b /* Skip one */
+		
+		$ald #c (words) #b
+		
+		$jeq #c #d (fill_buffer_and_print__return)
+		$jmp (fill_buffer_and_print__write)
+		$jnr (fill_buffer_and_print__loop)
+
+
+	/* We prefill #c with a value to use, and use the offset in #b to write to memory. */
+	fill_buffer_and_print__write:
+		$ast #c (write_buffer) #e
+		$inc #e /* Next. */
+		$ret
+
+
+	fill_buffer_and_print__return:
+		$pop /* Pop the $jeq return stack off, so we will return to the root caller */
+		
+		/* Add a flush */
+		$set #c "\n"
+		$jmp (fill_buffer_and_print__write)
+		
+		/* Add the required null for the print statement to stop reading memory */
+		$set #c null
+		$jmp (fill_buffer_and_print__write)
+		
+		/* Put a return instruction after the print statement */
+		$set #c $ret
+		$jmp (fill_buffer_and_print__write)
+		
+		/* If all goes well, it'll print and return back here. */
+		$jmp (write_buffer)
+		
+		$ret
+
+
+exit:
+	$int 2 "Done! Press any key to exit.\n"
+	$int 8 /* discard */
+	$hlt
+
+
+words:
+	15 "FizzBuzz"
+	3 "Fizz"
+	5 "Buzz"
+	-1 /* Breaks the find loop */
+
+
+/* This gets procedurally overwritten by the above code, 
+   it's padded with no-ops to ensure memory availability */
+write_buffer:
+	$int 2 null
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
+	$nop
